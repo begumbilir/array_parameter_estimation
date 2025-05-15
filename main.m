@@ -1,23 +1,66 @@
-%%  Make plots of the singular values of X
-% Parameters
+%% Signal model - 2. Plot singular values of X
+
 M = 5; % number of antennas
-Delta = 0.5; % distance between elements (in m)
+Delta = 0.5; %  normalized distance between antennas 
 theta = [-20; 30]; % true directions of arrival in degrees
-f = [0.1; 0.3]; %normalized frequencies of the sources
-SNR = 20; % signal-to-noise ratio in dB
-N = 20; % number of snapshots
+f = [0.1; 0.3]; % normalized frequencies of the sources w.r.t to the carrier -> for narrowband model
+SNR_dB = 20; % signal-to-noise ratio in dB
+N = 20; % number of snapshots/samples
 
-[X_gen, A_gen, S_gen] = gendata(M, N, Delta, theta, f, SNR);
+% Data generation
+[X_gen, A_gen, S_gen] = gendata(M, N, Delta, theta, f, SNR_dB);
 
-singular_vals = svd(X_gen);
+% Singular value decomposition
+singular_vals = svd(X_gen); 
 
-
-figure;
-stem(singular_vals, 'filled');
-xlabel('Index');
-ylabel('Singular Value');
-title('Singular Values of X');
+% Plotting results
+figure()
+plot(1:length(singular_vals), singular_vals, 'x', 'MarkerSize', 10, 'LineWidth', 4); 
+xlabel('Index', 'FontSize', 14);
+ylabel('Singular Value', 'FontSize', 14);
+title('Singular Values of X', 'FontSize', 16);
+set(gca, 'FontSize', 12);
 grid on;
+
+
+%% Estimation of directions  - 2. Test correctness with high SNR
+
+M = 5; % number of antennas
+Delta = 0.5; %  normalized distance between antennas 
+theta = [-20; 30]; % true directions of arrival in degrees
+f = [0.1; 0.3]; % normalized frequencies of the sources w.r.t to the carrier -> for narrowband model
+N = 20; % number of snapshots/samples
+SNR_dB = 50; % perfect reconstruction, but with order ambiguity
+
+% Data generation with high SNR (noiseless)
+[X_gen, A_gen, S_gen] = gendata(M, N, Delta, theta, f, SNR_dB);
+
+% DOA estimation
+estimated_thetas = esprit(X_gen, size(f,1));
+
+
+%% Estimation of frequencies  - 3. Test correctness with high SNR
+
+M = 5; % number of antennas
+Delta = 0.5; %  normalized distance between antennas 
+theta = [-20; 30]; % true directions of arrival in degrees
+f = [0.1; 0.3]; % normalized frequencies of the sources w.r.t to the carrier -> for narrowband model
+N = 20; % number of snapshots/samples
+SNR_dB = 50; % perfect reconstruction, but with order ambiguity
+
+% Data generation with high SNR (noiseless)
+[X_gen, A_gen, S_gen] = gendata(M, N, Delta, theta, f, SNR_dB);
+
+% Frequency estimation
+estimated_freq = espritfreq(X_gen, size(f,1));
+
+
+
+
+
+
+
+
 
 %%  Make a plot of the estimation performance of the three algorithms
 % Parameters

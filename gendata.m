@@ -1,26 +1,51 @@
-function [X,A,S] = gendata(M, N, Delta, theta, f, SNR)
-%for SNR greater than 40, no noise is added
+%% Signal model - 1. data, array response and signal matrix generation
 
-element_positions = (0:M-1) * Delta; % Positions of the array elements
+% INPUTS:
+% M = no of antennas
+% N = no of samples
+% Delta = normalized antenna spacing: 0.5 - scalar
+% theta = direction of the sources in degrees
+% f = normalized frequencies of the sources 
+% SNR_dB = SNR_dB per source
 
-% Generate signals
-S = exp(1i * 2 * pi * f * (0:N-1));
+% OUTPUTS:
+% X = Generated data matrix
+% A = Generated array response matrix
+% S = Generated source matrix
 
-num_sources = size(f, 1);
+
+function [X,A,S] = gendata(M, N, Delta, theta, f, SNR_dB)
+
+% Generate source signals
+S = exp(1i * 2 * pi * f * (0:N-1)); % num_sources x N samples
+
+num_sources = size(f, 1); % return no of rows -> f is a column vector 
 
 % Steering vectors for the true directions
 A = zeros(M, num_sources);
+
+% Positions of the array elements
+element_positions = (0:M-1) * Delta;  %n*Delta -> without 2pi
+
 for i = 1:num_sources
-    A(:, i) = exp(1i * 2 * pi * element_positions' * sind(theta(i)));
+    A(:, i) = exp(1i * 2 * pi * element_positions' * sind(theta(i))); % sind: theta in degrees
+    % Put the steering vectors together in columns
 end
 
 % Received signal at the array
 X = A * S;
 
 % Add noise
-noise_power = 10^(-SNR/10);
-noise = sqrt(noise_power/2) * (randn(M, N) + 1i * randn(M, N));
+SNR_lin = 10^(SNR_dB/10); % linear scale
 
-if SNR < 40 % for very big SNR's do not add noise
-    X = X + noise;
+% Signal power = num_sources 
+noise_power_spectral_density = num_sources / SNR_lin;  % SNR defined per source
+
+% Each noise sample is complex -> add normalization factor to preserve the scaling 
+Noise = sqrt(noise_power_spectral_density / 2) * (randn(M, N) + 1i * randn(M, N));
+
+%for SNR greater than 40, no noise is added for data generation
+
+if SNR_dB < 40 % for very large SNR, do not add noise
+    X = X + Noise;
 end
