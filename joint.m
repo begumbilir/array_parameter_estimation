@@ -39,7 +39,6 @@ function [estimated_joint_thetas, estimated_joint_freq] = joint(K, d, m)
  estimated_joint_freq = angles_f/(2 * pi/P); %T=1
 
  % Estimate the DOA
-
  Delta = 0.5;
  angles_theta = angle(diag(eigvals_Theta));
  estimated_joint_thetas = asin(angles_theta/(2 * pi * Delta)) * 180/pi;

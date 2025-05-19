@@ -102,7 +102,7 @@ K = K + Noise;
 [estimated_thetas_joint, estimated_freq_joint ] = joint(K,d,m); 
 
 
-%%  Make a plot of the estimation performance of the three algorithms
+%% Comparison - 1.  Make a plot of the estimation performance of the three algorithms
 % Parameters
 M = 3; % number of antennas
 Delta = 0.5; % distance between elements (in m)
@@ -132,7 +132,7 @@ for idx = 1:length(SNR_db)
         theta_hat = esprit(X, d);
         % Apply Espritfreq
         freq_hat = espritfreq(X(:,1:n), d);
-        
+
         % Sort estimates to match true order
         theta_hat = sort(real(theta_hat));
         freq_hat = sort(freq_hat);
@@ -168,7 +168,7 @@ legend('f1', 'f2'); title('Frequency Estimation Performance of espritfreq');
 
 
 
-%%  Compute two zero-forcing beamformers
+%%  Comparison - 2. Compute two zero-forcing beamformers
 M = 5; % number of antennas
 Delta = 0.5; % distance between elements (in m)
 theta = [-20; 30]; % true directions of arrival in degrees
@@ -212,7 +212,7 @@ fprintf('Rank of S matrix:       %s\n', mat2str(rank(S_mtrx_theta)));
 S_mtrx_freq = [S_gen; S_theta_rec];
 fprintf('Rank of S matrix:       %s\n', mat2str(rank(S_mtrx_freq)));
 
-%% Plotting their spatial response
+%%  Comparison - 3. Plotting the spatial response
 
 % Change SNR to 10 db (Other parameters are same)
 SNR = 10; 
