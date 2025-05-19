@@ -55,11 +55,51 @@ SNR_dB = 50; % perfect reconstruction, but with order ambiguity
 estimated_freq = espritfreq(X_gen, size(f,1));
 
 
+%% Joint estimation of directions and frequencies - 3. Test correctness with high SNR
+
+M = 5; % number of antennas
+Delta = 0.5; %  normalized distance between antennas 
+theta = [-20; 30]; % true directions of arrival in degrees
+f = [0.1; 0.3]; % normalized frequencies of the sources w.r.t to the carrier -> for narrowband model
+N = 20; % number of snapshots/samples
+SNR_dB = 50; % perfect reconstruction, but with order ambiguity
+m = 5; % smoothing factor -> maximum the number of antennas
+d = size(f,1);
+
+% Array response and signal generation 
+[~, A_gen, S_gen] = gendata(M, N, Delta, theta, f, SNR_dB);
+
+% Define the vectors phi and theta
+phi_vec = (exp(1i * 2 * pi * f'));
+theta_vec = (exp(1i * 2 * pi * Delta * sind(theta)'));
+
+% Construct the Khatri Rao structure
+F = [ones(1, d); phi_vec; theta_vec];
+
+% Received signal at the array
+K = khatrirao(F,A_gen) * S_gen;
+
+% Add noise
+SNR_lin = 10^(SNR_dB/10); % linear scale
+
+% Signal power = num_sources 
+noise_power_spectral_density = (d+1)*m / SNR_lin;  % SNR defined per source
+
+% Each noise sample is complex -> add normalization factor to preserve the scaling 
+Noise = sqrt(noise_power_spectral_density / 2) * (randn(size(K)) + 1i * randn(size(K)));
+
+K = K + Noise;
 
 
+% first try -> use K
+%Y_gen = A_gen * Phi;
+%Z_gen = A_gen * Theta;
+%K = [A_gen *S_gen; Y_gen*S_gen; Z_gen*S_gen];
 
 
+% Perform joint diagonalization
 
+[estimated_thetas_joint, estimated_freq_joint ] = joint(K,d,m); 
 
 
 %%  Make a plot of the estimation performance of the three algorithms
@@ -136,7 +176,7 @@ f = [0.1; 0.3]; %normalized frequencies of the sources
 SNR = 100; % for SNR greater than 40, no noise is added
 N = 20; % number of snapshots
 m = M; % smoothing factor in time
-n = N - m + 1; %number of samples of each source for freq estimation (smoothing in time by factor M)
+n = N - m + 1; % number of samples of each source for freq estimation (smoothing in time by factor M)
 
 [X_gen, A_gen, S_gen] = gendata(M, N, Delta, theta, f, SNR);
 
