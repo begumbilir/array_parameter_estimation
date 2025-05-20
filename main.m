@@ -292,20 +292,21 @@ x = gendata_conv(s, P, N, sigma);
 
 
 %% Channel equalization - 2. Signal model
-N = 500;          % number of QPSK symbols
+N_s = 500;          % number of QPSK symbols
 P = 8;           % oversampling factor
 sigma = 0;      % noise std deviation
 
 % Generate QPSK symbols 
 constellation = [1+1j, 1-1j, -1+1j, -1-1j]/sqrt(2);
-s = constellation(randi(4, N, 1));  % random QPSK symbols
+s = constellation(randi(4, 1, N_s));  % random QPSK symbols
 
 % Generate received signal
-x = gendata_conv(s, P, N, sigma);
+x = gendata_conv(s, P, N_s, sigma);
 
+N = N_s + L -1;
 X = zeros(2*P,N-1);
 
-% x(1:P:end-P) -> size NP
+% x(1:P:end-P) -> size (N-1)
 % x(2:P:end-P+1)
 % x(3:P:end-P+2)
 % x(2P:P:end+row-1-P)
@@ -320,17 +321,18 @@ rank_X = rank(X)
 diag(e)
 
 %% Channel equalization - 1&2. Zero-forcing and Wiener Equalizer
-N = 500;          % number of QPSK symbols
+N_s = 500;          % number of QPSK symbols
 P = 4;           % oversampling factor
 sigma = 0.5;      % noise std deviation
 
 % Generate QPSK symbols 
 constellation = [1+1j, 1-1j, -1+1j, -1-1j]/sqrt(2);
-s = constellation(randi(4, N, 1));  % random QPSK symbols
+s = constellation(randi(4, 1, N_s));  % random QPSK symbols
 
 % Generate received signal
-x = gendata_conv(s, P, N, sigma);
+x = gendata_conv(s, P, N_s, sigma);
 
+N = N_s + L -1;
 X = zeros(2*P,N-1);
 
 
@@ -350,25 +352,14 @@ rank_X_noisy = rank(X)
 %% Zero-forcing implementation
 
 % assume we have access to h(t)
-h_t = zeros(1, P);
-L = length(h_t);
-t = 0: 1/P : 1-1/P;
+h_sample = [1, -1, 1, -1];  % corresponds to h(t) as piecewise described
+L = 4;
 
-h_t(t >= 0   & t < 0.25)  = 1;
-h_t(t >= 0.25 & t < 0.5)  = -1;
-h_t(t >= 0.5 & t < 0.75)  = 1;
-h_t(t >= 0.75 & t <= 1.0) = -1;
-
-h_t_up_sampled = zeros(L*P, 1);
-h_t_up_sampled = repelem(h_t, P);
-
-% Construct H for just one symbol 
+% Construct H for just span of two symbols
 
 H = zeros(2*P, L-1);
-
-for row = 1:2*P 
-   H(row, :) = h_t_up_sampled(row:P:end-P+row-1);
-end
+H(1, :) = h_sample(1: L-1);
+H(P+1, :) = h_sample(2:L);
 
 % We are trying to build shifted versions of s -> the way we did with H in
 % class
@@ -376,7 +367,7 @@ W_ZF_H = pinv(H);
 S_ZF = W_ZF_H * X; % it should have the size (L-1)*(N-1)
 s_ZF = S_ZF(end,L-1:end);
 
-check_reconstruction_ZF = [s_ZF; s(1:end-L+1)];
+check_reconstruction_ZF = [s_ZF; s];
 
 rank_ZF = rank(check_reconstruction_ZF)
 
@@ -390,9 +381,10 @@ W_Wiener_H = (inv(H*H' + sigma^2*eye(2*P))*H)';
 S_Wiener = W_Wiener_H * X; 
 s_Wiener = S_Wiener(end,L-1:end);
 
-rank_Wiener = rank([s_Wiener; s(1:end-L+1)])
+check_reconstruction_Wiener = [s_Wiener; s];
+rank_Wiener = rank(check_reconstruction_Wiener)
 
-[~,sv] = svd([s_Wiener; s(1:end-L+1)]);
+[~,sv] = svd(check_reconstruction_Wiener);
 
 diag(sv)
 
