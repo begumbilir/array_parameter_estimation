@@ -274,3 +274,178 @@ xlabel('Frequency (Hz)');
 ylabel('Zero-forcing Output Power (dB)');
 title('Zero-forcing Beamformer Frequency Estimation');
 grid on;
+
+
+%% Channel equalization - 1. Signal model
+
+% Parameters
+N = 2;          % number of QPSK symbols
+P = 2;           % oversampling factor
+sigma = 0.1;      % noise std deviation
+
+% Generate QPSK symbols 
+constellation = [1+1j, 1-1j, -1+1j, -1-1j]/sqrt(2);
+s = constellation(randi(4, N, 1));  % random QPSK symbols
+
+% Generate received signal
+x = gendata_conv(s, P, N, sigma);
+
+
+%% Channel equalization - 2. Signal model
+N = 500;          % number of QPSK symbols
+P = 8;           % oversampling factor
+sigma = 0;      % noise std deviation
+
+% Generate QPSK symbols 
+constellation = [1+1j, 1-1j, -1+1j, -1-1j]/sqrt(2);
+s = constellation(randi(4, N, 1));  % random QPSK symbols
+
+% Generate received signal
+x = gendata_conv(s, P, N, sigma);
+
+X = zeros(2*P,N-1);
+
+% x(1:P:end-P) -> size NP
+% x(2:P:end-P+1)
+% x(3:P:end-P+2)
+% x(2P:P:end+row-1-P)
+
+for row = 1:2*P 
+   X(row, :) = transpose(x(row:P:end-P+row-1));
+end
+
+rank_X = rank(X)
+[~, e] = svd(X);
+
+diag(e)
+
+%% Channel equalization - 1&2. Zero-forcing and Wiener Equalizer
+N = 500;          % number of QPSK symbols
+P = 4;           % oversampling factor
+sigma = 0.5;      % noise std deviation
+
+% Generate QPSK symbols 
+constellation = [1+1j, 1-1j, -1+1j, -1-1j]/sqrt(2);
+s = constellation(randi(4, N, 1));  % random QPSK symbols
+
+% Generate received signal
+x = gendata_conv(s, P, N, sigma);
+
+X = zeros(2*P,N-1);
+
+
+% x(1:P:end-P) -> size NP
+% x(2:P:end-P+1)
+% x(3:P:end-P+2)
+% x(2P:P:end+row-1-P)
+
+for row = 1:2*P 
+   X(row, :) = transpose(x(row:P:end-P+row-1));
+end
+
+rank_X_noisy = rank(X)
+
+
+
+%% Zero-forcing implementation
+
+% assume we have access to h(t)
+h_t = zeros(1, P);
+L = length(h_t);
+t = 0: 1/P : 1-1/P;
+
+h_t(t >= 0   & t < 0.25)  = 1;
+h_t(t >= 0.25 & t < 0.5)  = -1;
+h_t(t >= 0.5 & t < 0.75)  = 1;
+h_t(t >= 0.75 & t <= 1.0) = -1;
+
+h_t_up_sampled = zeros(L*P, 1);
+h_t_up_sampled = repelem(h_t, P);
+
+% Construct H for just one symbol 
+
+H = zeros(2*P, L-1);
+
+for row = 1:2*P 
+   H(row, :) = h_t_up_sampled(row:P:end-P+row-1);
+end
+
+% We are trying to build shifted versions of s -> the way we did with H in
+% class
+W_ZF_H = pinv(H);
+S_ZF = W_ZF_H * X; % it should have the size (L-1)*(N-1)
+s_ZF = S_ZF(end,L-1:end);
+
+check_reconstruction_ZF = [s_ZF; s(1:end-L+1)];
+
+rank_ZF = rank(check_reconstruction_ZF)
+
+[~,sv] = svd(check_reconstruction_ZF);
+
+diag(sv)
+%% Wiener Filter Implementation
+
+W_Wiener_H = (inv(H*H' + sigma^2*eye(2*P))*H)';
+
+S_Wiener = W_Wiener_H * X; 
+s_Wiener = S_Wiener(end,L-1:end);
+
+rank_Wiener = rank([s_Wiener; s(1:end-L+1)])
+
+[~,sv] = svd([s_Wiener; s(1:end-L+1)]);
+
+diag(sv)
+
+
+%% Plot constellation
+
+% Plot the constellation
+figure;
+plot(real(s), imag(s), 'o');
+grid on;
+axis equal;
+xlabel('In-Phase');
+ylabel('Quadrature');
+title('QPSK Constellation');
+xlim([-2 2]);
+ylim([-2 2]);
+
+% Optional: Add reference lines
+hold on;
+plot([-2 2], [0 0], 'k--');  % x-axis
+plot([0 0], [-2 2], 'k--');  % y-axis
+
+%%
+% Plot the constellation
+figure;
+plot(real(s_ZF), imag(s_ZF), 'o');
+grid on;
+axis equal;
+xlabel('In-Phase');
+ylabel('Quadrature');
+title('QPSK Constellation ZF');
+xlim([-2 2]);
+ylim([-2 2]);
+
+% Optional: Add reference lines
+hold on;
+plot([-2 2], [0 0], 'k--');  % x-axis
+plot([0 0], [-2 2], 'k--');  % y-axis
+
+%%
+
+% Plot the constellation
+figure;
+plot(real(s_Wiener), imag(s_Wiener), 'o');
+grid on;
+axis equal;
+xlabel('In-Phase');
+ylabel('Quadrature');
+title('QPSK Constellation Wiener');
+xlim([-2 2]);
+ylim([-2 2]);
+
+% Optional: Add reference lines
+hold on;
+plot([-2 2], [0 0], 'k--');  % x-axis
+plot([0 0], [-2 2], 'k--');  % y-axis
