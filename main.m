@@ -303,16 +303,11 @@ s = constellation(randi(4, 1, N_s));  % random QPSK symbols
 % Generate received signal
 x = gendata_conv(s, P, N_s, sigma);
 
-N = N_s + L -1;
-X = zeros(2*P,N-1);
+X = zeros(2*P,N_s-1);
 
-% x(1:P:end-P) -> size (N-1)
-% x(2:P:end-P+1)
-% x(3:P:end-P+2)
-% x(2P:P:end+row-1-P)
-
-for row = 1:2*P 
-   X(row, :) = transpose(x(row:P:end-P+row-1));
+for k = 1:(N_s-1)
+    % Each column contains samples: x(k), x(k+1), ..., x(k + 2P - 1)
+    X(:, k) = x(P*(k-1)+1 : P*(k+1));  % MATLAB is 1-indexed
 end
 
 rank_X = rank(X)
@@ -322,7 +317,7 @@ diag(e)
 
 %% Channel equalization - 1&2. Zero-forcing and Wiener Equalizer
 N_s = 500;          % number of QPSK symbols
-P = 4;           % oversampling factor
+P = 8;           % oversampling factor
 sigma = 0.5;      % noise std deviation
 
 % Generate QPSK symbols 
@@ -332,17 +327,12 @@ s = constellation(randi(4, 1, N_s));  % random QPSK symbols
 % Generate received signal
 x = gendata_conv(s, P, N_s, sigma);
 
-N = N_s + L -1;
-X = zeros(2*P,N-1);
+L = 2; %for just span of two symbols (L) (arbitrarily chosen)
+X = zeros(2*P,N_s-1);
 
-
-% x(1:P:end-P) -> size NP
-% x(2:P:end-P+1)
-% x(3:P:end-P+2)
-% x(2P:P:end+row-1-P)
-
-for row = 1:2*P 
-   X(row, :) = transpose(x(row:P:end-P+row-1));
+for k = 1:(N_s-1)
+    % Each column contains samples: x(k), x(k+1), ..., x(k + 2P - 1)
+    X(:, k) = x(P*(k-1)+1 : P*(k+1));  % MATLAB is 1-indexed
 end
 
 rank_X_noisy = rank(X)
@@ -352,22 +342,34 @@ rank_X_noisy = rank(X)
 %% Zero-forcing implementation
 
 % assume we have access to h(t)
-h_sample = [1, -1, 1, -1];  % corresponds to h(t) as piecewise described
-L = 4;
+if P == 4
+    h_sample = [1, 1, -1, 1];  
+elseif P == 8
+    h_sample = [1, 1, 1, -1, -1, 1, 1, -1]; %for P=8
+end
 
-% Construct H for just span of two symbols
+L = 2; %for just span of two symbols (L) (arbitrarily chosen)
 
-H = zeros(2*P, L-1);
-H(1, :) = h_sample(1: L-1);
-H(P+1, :) = h_sample(2:L);
+
+% Construct H for just span of two symbols (L)
+% H = [[h_0 0], [0 h_1]], h_0, 0, h1 are size of 4x1
+
+% does not matter since symmetric
+% H = zeros(2*P, L);
+% H(1:length(h_sample), 1) = h_sample;
+% H(P+1:end, 2) = h_sample;
+
+H = zeros(2*P, L);
+H(1:length(h_sample), 2) = h_sample;
+H(P+1:end, 1) = h_sample;
 
 % We are trying to build shifted versions of s -> the way we did with H in
 % class
 W_ZF_H = pinv(H);
 S_ZF = W_ZF_H * X; % it should have the size (L-1)*(N-1)
-s_ZF = S_ZF(end,L-1:end);
+s_ZF = S_ZF(1,1:end-1);
 
-check_reconstruction_ZF = [s_ZF; s];
+check_reconstruction_ZF = [s_ZF; s(1:end-L)]; % s is delayed by L 
 
 rank_ZF = rank(check_reconstruction_ZF)
 
@@ -379,9 +381,9 @@ diag(sv)
 W_Wiener_H = (inv(H*H' + sigma^2*eye(2*P))*H)';
 
 S_Wiener = W_Wiener_H * X; 
-s_Wiener = S_Wiener(end,L-1:end);
+s_Wiener = S_Wiener(end,L:end); % or s_Wiener = S_Wiener(1,1:end-1); (same thing)
 
-check_reconstruction_Wiener = [s_Wiener; s];
+check_reconstruction_Wiener = [s_Wiener; s(1:end-L)];
 rank_Wiener = rank(check_reconstruction_Wiener)
 
 [~,sv] = svd(check_reconstruction_Wiener);
@@ -389,55 +391,51 @@ rank_Wiener = rank(check_reconstruction_Wiener)
 diag(sv)
 
 
-%% Plot constellation
-
-% Plot the constellation
-figure;
-plot(real(s), imag(s), 'o');
-grid on;
-axis equal;
-xlabel('In-Phase');
-ylabel('Quadrature');
-title('QPSK Constellation');
-xlim([-2 2]);
-ylim([-2 2]);
-
-% Optional: Add reference lines
-hold on;
-plot([-2 2], [0 0], 'k--');  % x-axis
-plot([0 0], [-2 2], 'k--');  % y-axis
-
 %%
-% Plot the constellation
-figure;
-plot(real(s_ZF), imag(s_ZF), 'o');
-grid on;
-axis equal;
-xlabel('In-Phase');
-ylabel('Quadrature');
-title('QPSK Constellation ZF');
-xlim([-2 2]);
-ylim([-2 2]);
 
-% Optional: Add reference lines
-hold on;
+% Plot the constellation for ZF
+figure;
+hold on; grid on; axis equal;
+
+% Plot the original QPSK constellation
+plot(real(s), imag(s), 'bo', 'DisplayName', 'Original');
+
+% Plot the Zero Forcing equalized constellation
+plot(real(s_ZF), imag(s_ZF), 'bx', 'DisplayName', 'ZF Equalized');
+
+% Reference lines
 plot([-2 2], [0 0], 'k--');  % x-axis
 plot([0 0], [-2 2], 'k--');  % y-axis
+
+% Labels and title
+xlabel('In-Phase');
+ylabel('Quadrature');
+title('QPSK Constellation: Original vs. ZF');
+xlim([-2 2]);
+ylim([-2 2]);
+hold off;
 
 %%
 
-% Plot the constellation
+% Plot the constellation for Wiener
 figure;
-plot(real(s_Wiener), imag(s_Wiener), 'o');
-grid on;
-axis equal;
-xlabel('In-Phase');
-ylabel('Quadrature');
-title('QPSK Constellation Wiener');
-xlim([-2 2]);
-ylim([-2 2]);
+hold on; grid on; axis equal;
 
-% Optional: Add reference lines
-hold on;
+% Plot the original QPSK constellation
+plot(real(s), imag(s), 'bo', 'DisplayName', 'Original');
+
+% Plot the Zero Forcing equalized constellation
+plot(real(s_Wiener), imag(s_Wiener), 'bx', 'DisplayName', 'ZF Equalized');
+
+% Reference lines
 plot([-2 2], [0 0], 'k--');  % x-axis
 plot([0 0], [-2 2], 'k--');  % y-axis
+
+% Labels and title
+xlabel('In-Phase');
+ylabel('Quadrature');
+title('QPSK Constellation: Original vs. Wiener');
+xlim([-2 2]);
+ylim([-2 2]);
+hold off;
+
