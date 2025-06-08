@@ -60,30 +60,44 @@ estimated_freq = espritfreq(X_gen, size(f,1));
 M = 5; % number of antennas
 Delta = 0.5; %  normalized distance between antennas 
 theta = [-20; 30]; % true directions of arrival in degrees
-f = [0.1; 0.3]; % normalized frequencies of the sources w.r.t to the carrier -> for narrowband model
-N = 20; % number of snapshots/samples
+f = [0.1; 0.12]; % normalized frequencies of the sources w.r.t to the carrier -> for narrowband model
+N = 20; % number of available snapshots/samples
 SNR_dB = 50; % perfect reconstruction, but with order ambiguity
-m = 5; % smoothing factor -> maximum the number of antennas
+m = 3; % smoothing factor -> maximum the number of antennas
 d = size(f,1);
+Ns = N-m+1; % number of samples used after smoothing 
 
 % Array response and signal generation 
-[~, A_gen, S_gen] = gendata(M, N, Delta, theta, f, SNR_dB);
+[~, A_gen, S_gen] = gendata(M, Ns, Delta, theta, f, SNR_dB);
 
-% Define the vectors phi and theta
-phi_vec = (exp(1i * 2 * pi * f'));
-theta_vec = (exp(1i * 2 * pi * Delta * sind(theta)'));
+% Define the vector phi and matrix Phi
+phi = exp(1j * 2 * pi * f);  
+Phi = diag(phi);             % Construct diagonal matrix
 
-% Construct the Khatri Rao structure
-F = [ones(1, d); phi_vec; theta_vec];
+% % Create F_phi vector composed of [Phi^0 Phi Phi^2 ... Phi^(m-1)]-> size (m*d) x (d)
+% F_phi = zeros(m*d, d); 
+% for k = 0:(m-1)
+%     F_phi(k*d + (1:d), :) = Phi^k; % Stack each Phi^k
+% end
 
-% Received signal at the array
-K = khatrirao(F,A_gen) * S_gen;
+% Received signal at the array by constructing the Khatri Rao structure
+% Apply blocks kronecker product
+K_kron = zeros(M*m, d);        
+for k = 0:(m-1)
+    row_start = k*M + 1;
+    row_end = (k+1)*M;
+    K_kron(row_start:row_end, :) = A_gen * (Phi^k);
+end
+
+K = K_kron * S_gen; %S_gen size d x (N-m+1)
+
 
 % Add noise
 SNR_lin = 10^(SNR_dB/10); % linear scale
 
-% Signal power = num_sources 
-noise_power_spectral_density = (d+1)*m / SNR_lin;  % SNR defined per source
+% Calculate signal power
+source_power = norm(S_gen(1,:)); % norm(S_gen(1,:)) = norm(S_gen(2,:)), both sources have save signal power
+noise_power_spectral_density = source_power / SNR_lin;  % SNR defined per source
 
 % Each noise sample is complex -> add normalization factor to preserve the scaling 
 Noise = sqrt(noise_power_spectral_density / 2) * (randn(size(K)) + 1i * randn(size(K)));
@@ -91,10 +105,7 @@ Noise = sqrt(noise_power_spectral_density / 2) * (randn(size(K)) + 1i * randn(si
 K = K + Noise;
 
 
-% first try -> use K
-%Y_gen = A_gen * Phi;
-%Z_gen = A_gen * Theta;
-%K = [A_gen *S_gen; Y_gen*S_gen; Z_gen*S_gen];
+
 
 
 % Perform joint diagonalization
@@ -112,33 +123,60 @@ f_true = [0.1; 0.12]; %normalized frequencies of the sources
 SNR_db = 0:4:20; % signal-to-noise ratio in dB
 N = 20; % number of snapshots
 m = M; % smoothing factor in time
-n = N - m + 1; %number of samples of each source for freq estimation (smoothing in time by factor M)
+Ns = N - m + 1; %number of samples of each source for freq estimation (smoothing in time by factor M)
 num_runs = 1000;
 
 
 % Preallocate
 theta_estimates = zeros(length(SNR_db), d, num_runs);
 freq_estimates = zeros(length(SNR_db), d, num_runs);
+theta_joint_estimates = zeros(length(SNR_db), d, num_runs);
+freq_joint_estimates = zeros(length(SNR_db), d, num_runs);
 
+% Define the vector phi and matrix Phi
+phi = exp(1j * 2 * pi * f_true);  
+Phi = diag(phi);             % Construct diagonal matrix
 
 element_positions = (0:M-1) * Delta; % positions of the array elements
 for idx = 1:length(SNR_db)
     SNR = SNR_db(idx);
     fprintf('Running SNR = %d dB\n', SNR);
     for run = 1:num_runs        
-        [X, ~, ~] = gendata(M, N, Delta, theta, f_true, SNR);
+        [X, A, S] = gendata(M, N, Delta, theta, f_true, SNR);
+        % Data matrix construction for joint estimation
+        K_kron = zeros(M*m, d);        
+        for k = 0:(m-1)
+            row_start = k*M + 1;
+            row_end = (k+1)*M;
+            K_kron(row_start:row_end, :) = A * (Phi^k);
+        end
+        
+        K = K_kron * S(:, 1:Ns);
+        
+        % Add noise
+        SNR_lin = 10^(SNR_dB/10); % linear scale
+        source_power = norm(S_gen(1,:));
+        noise_power_spectral_density = source_power / SNR_lin;  % SNR defined per source
+        Noise = sqrt(noise_power_spectral_density / 2) * (randn(size(K)) + 1i * randn(size(K)));
+        K = K + Noise;
 
         % Apply ESPRIT
         theta_hat = esprit(X, d);
         % Apply Espritfreq
-        freq_hat = espritfreq(X(:,1:n), d);
+        freq_hat = espritfreq(X, d);
+        % Apply joint
+        [theta_joint, freq_joint] = joint(K,d,m);
 
         % Sort estimates to match true order
         theta_hat = sort(real(theta_hat));
         freq_hat = sort(freq_hat);
+        theta_joint = sort(real(theta_joint));
+        freq_joint = sort(freq_joint);
         
         theta_estimates(idx, :, run) = theta_hat;
         freq_estimates(idx, :, run) = freq_hat;
+        theta_joint_estimates(idx, :, run) = theta_joint;
+        freq_joint_estimates(idx, :, run) = freq_joint;
     end
 end
 
@@ -148,6 +186,11 @@ mean_theta = squeeze(mean(theta_estimates, 3));
 std_theta = squeeze(std(theta_estimates, 0, 3));
 mean_freq = squeeze(mean(freq_estimates, 3));
 std_freq = squeeze(std(freq_estimates, 0, 3));
+
+mean_theta_joint = squeeze(mean(theta_joint_estimates, 3));
+std_theta_joint = squeeze(std(theta_joint_estimates, 0, 3));
+mean_freq_joint = squeeze(mean(freq_joint_estimates, 3));
+std_freq_joint = squeeze(std(freq_joint_estimates, 0, 3));
 
 % Plot results
 figure;
@@ -166,25 +209,38 @@ xlabel('SNR (dB)'); ylabel('Estimated Frequency');
 legend('f1', 'f2'); title('Frequency Estimation Performance of espritfreq');
 
 
+% Plot results
+figure;
+% Plot of joint theta estimation
+subplot(2,1,1);
+errorbar(SNR_db, mean_theta_joint(:,1), std_theta(:,1), '-o'); hold on;
+errorbar(SNR_db, mean_theta_joint(:,2), std_theta(:,2), '-x');
+xlabel('SNR (dB)'); ylabel('Estimated Joint Angle (degrees)');
+legend('θ1', 'θ2'); title('Joint Angle Estimation Performance');
 
+% Plot of joint freq. estimation
+subplot(2,1,2);
+errorbar(SNR_db, mean_freq_joint(:,1), std_freq(:,1), '-o'); hold on;
+errorbar(SNR_db, mean_freq_joint(:,2), std_freq(:,2), '-x');
+xlabel('SNR (dB)'); ylabel('Estimated Joint Frequency');
+legend('f1', 'f2'); title('Joint Frequency Estimation Performance');
 
 %%  Comparison - 2. Compute two zero-forcing beamformers
 M = 5; % number of antennas
 Delta = 0.5; % distance between elements (in m)
 theta = [-20; 30]; % true directions of arrival in degrees
-f = [0.1; 0.3]; %normalized frequencies of the sources
+f = [0.1; 0.12]; %normalized frequencies of the sources
 SNR = 100; % for SNR greater than 40, no noise is added
 N = 20; % number of snapshots
-m = M; % smoothing factor in time
-n = N - m + 1; % number of samples of each source for freq estimation (smoothing in time by factor M)
+m = 3; % smoothing factor in time
+Ns = N - m + 1; % number of samples of each source for freq estimation (smoothing in time by factor M)
 
 [X_gen, A_gen, S_gen] = gendata(M, N, Delta, theta, f, SNR);
 
 % Apply ESPRIT
 theta_estimated = esprit(X_gen, d);
 % Apply Espritfreq
-X_gen_freq = X_gen(1:m, 1:n);
-freq_estimated = espritfreq(X_gen_freq, d);
+freq_estimated = espritfreq(X_gen, d);
 
 % Construct steering matrix using estimated DoAs
 A_est_theta = zeros(M, d);
@@ -197,19 +253,19 @@ S_theta_rec = W_H_theta * X_gen;
 
 
 % Construct steering matrix using estimated freqs
-A_est_freq = zeros(m, d);
+A_est_freq = zeros(M, d);
 for i = 1:d
-    A_est_freq(:, i) = exp(1j * 2 * pi * freq_estimated(i) * (0:m-1)');
+    A_est_freq(:, i) = exp(1j * 2 * pi * freq_estimated(i) * (0:M-1)');
 end
 
 W_H_freq = pinv(A_est_freq);
-S_freq_rec = W_H_freq * X_gen_freq;
+S_freq_rec = W_H_freq * X_gen;
 
 % Display rank
 S_mtrx_theta = [S_gen; S_theta_rec];
 fprintf('Rank of S matrix:       %s\n', mat2str(rank(S_mtrx_theta)));
 
-S_mtrx_freq = [S_gen; S_theta_rec];
+S_mtrx_freq = [S_gen; S_freq_rec];
 fprintf('Rank of S matrix:       %s\n', mat2str(rank(S_mtrx_freq)));
 
 %%  Comparison - 3. Plotting the spatial response
@@ -223,58 +279,56 @@ SNR = 10;
 theta_estimated = sort(esprit(X, d));
 
 % Apply Espritfreq
-X_freq = X(1:m, 1:n);
-freq_estimated = sort(espritfreq(X_freq, d));
+freq_estimated = sort(espritfreq(X, d));
 
-% Construct steering matrix using estimated DoAs
-A_est_theta = zeros(M, d);
-for i = 1:d
-    A_est_theta(:, i) = exp(1j * 2 * pi * Delta * (0:M-1)' * sind(theta_estimated(i)));
-end
-
-W_H_theta = pinv(A_est_theta);
-
-% Construct steering matrix using estimated freqs
-A_est_freq = zeros(m, d);
-for i = 1:d
-    A_est_freq(:, i) = exp(1j * 2 * pi * freq_estimated(i) * (0:m-1)');
-end
-
-W_H_freq = pinv(A_est_freq);
 
 theta_scan = -90:1:90; % Scanning angles for beam pattern
-freq_scan = -0.5:0.1:0.5; % Scanning freqs for beam pattern (T = 1)
-                        % -pi < 2pi*f*T < pi
+
+% Construct steering vectors using estimated thetas
+a_theta1 = exp(1j * 2 * pi * Delta * (0:M-1)' * sind(theta_estimated(1)));
+a_theta2 = exp(1j * 2 * pi * Delta * (0:M-1)' * sind(theta_estimated(2)));
+% Compute ZF beamformer
+w_H_theta = a_theta1' / norm(a_theta1); %ZF beamformer for source 1
+w_H_theta2 = a_theta2' / norm(a_theta2); %ZF beamformer for source 2
+
+% Construct steering vectors using estimated freqs
+a_freq1 = exp(1j * 2 * pi * freq_estimated(1) * (0:M-1)');
+a_freq2 = exp(1j * 2 * pi * freq_estimated(2) * (0:M-1)');
+% Compute ZF beamformer -> norm: Euclidean norm
+w_H_freq = a_freq1' / norm(a_freq1); %ZF beamformer for source 1
+w_H_freq2 = a_freq2' / norm(a_freq2); %ZF beamformer for source 2
 
 % Calculate zero-forcing beamformer output power for DOA estimation
 zf_output_theta = zeros(size(theta_scan));
+zf_output_freq  = zeros(size(theta_scan));
+zf_output_theta2 = zeros(size(theta_scan)); 
+zf_output_freq2  = zeros(size(theta_scan)); 
 for i = 1:length(theta_scan)
     a_theta = exp(1i * 2 * pi * Delta * (0:M-1)' * sind(theta_scan(i))); %For uniform linear array
-    zf_output_theta(i) = norm(W_H_theta * a_theta); %Euclidean norm
+    zf_output_theta(i) = abs(w_H_theta * a_theta); %from DoA, Euclidean norm
+    zf_output_freq(i)  = abs(w_H_freq  * a_theta);  % from freq
+    zf_output_theta2(i) = abs(w_H_theta2 * a_theta); %from DoA
+    zf_output_freq2(i)  = abs(w_H_freq2  * a_theta);  % from freq
 end
 
-% Calculate zero-forcing beamformer output power for freq estimation
-zf_output_freq = zeros(size(freq_scan));
-for i = 1:length(freq_scan) 
-    a_freq = exp(1i * 2 * pi * (0:m-1)' * freq_scan(i)); 
-    zf_output_freq(i) = norm(W_H_freq * a_freq); %Euclidean norm
-end
-
-% Plotting
+% Plotting the spatial responses
 figure;
-plot(theta_scan, 10*log10(zf_output_theta));
-xlabel('Angle (degrees)');
-ylabel('Zero-forcing Output Power (dB)');
-title('Zero-forcing Beamformer DOA Estimation');
+plot(theta_scan, zf_output_theta, 'b', 'LineWidth', 1.5); hold on;
+plot(theta_scan, zf_output_freq,  'r--', 'LineWidth', 1.5);
+xlabel('Angle θ (degrees)');
+ylabel('|w^H a(θ)|');
+title('Comparison of ZF Beamformer Spatial Responses for First Source');
+legend('ZF from DoA estimates', 'ZF from frequency estimates');
 grid on;
 
 figure;
-plot(freq_scan, 10*log10(zf_output_freq));
-xlabel('Frequency (Hz)');
-ylabel('Zero-forcing Output Power (dB)');
-title('Zero-forcing Beamformer Frequency Estimation');
+plot(theta_scan, zf_output_theta2, 'b', 'LineWidth', 1.5); hold on;
+plot(theta_scan, zf_output_freq2,  'r--', 'LineWidth', 1.5);
+xlabel('Angle θ (degrees)');
+ylabel('|w^H a(θ)|');
+title('Comparison of ZF Beamformer Spatial Responses for Second Source');
+legend('ZF from DoA estimates', 'ZF from frequency estimates');
 grid on;
-
 
 %% Channel equalization - 1. Signal model
 
