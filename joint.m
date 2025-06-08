@@ -11,21 +11,35 @@
 
 function [estimated_joint_thetas, estimated_joint_freq] = joint(K, d, m)
 
-% assume P = 1 ( no oversampling -> we use normalized frequencies)
-% assume B  full ones, so no attenuation
- P = 1; 
+[U, sigma, ~] = svd(K);
+U_econ = U(:, 1:d);
+M = size(K,1) / m;
+% Identity matrices
+Im = eye(m);
+IM = eye(M);
+IM_1 = eye(M-1);
+Im_1 = eye(m-1);
 
- [U, sigma, ~] = svd(K);
+% Phi selectors
+Jx_phi = kron([Im_1, zeros(m-1,1)], IM);  % size: M*(m-1) x M*m
+Jy_phi = kron([zeros(m-1,1), Im_1], IM);  % size: M*(m-1) x M*m
 
- U_x = U( 1:m , 1:d ); % principal d left singular vectors
- U_y = U( m+1:2*m, 1: d);
- U_z = U( 2*m+1:end, 1: d);
+% Theta selectors, selection in every m blocks
+Jx_theta = kron(Im, [IM_1, zeros(M-1,1)]);  % size: m*(M-1) x M*m
+Jy_theta = kron(Im, [zeros(M-1,1), IM_1]);  % size: m*(M-1) x M*m
 
- % Assume m >= num sources (which is the case) for psuedo inv of U_x
- M_y = pinv(U_x) * U_y;
- M_z = pinv(U_x) * U_z;
+% Apply selection matrices
+Ux_phi = Jx_phi * U_econ;
+Uy_phi = Jy_phi * U_econ;
+Ux_theta = Jx_theta * U_econ;
+Uy_theta = Jy_theta * U_econ;
 
- stacked_M = [M_y M_z];
+
+M_phi = pinv(Ux_phi)*Uy_phi;
+M_theta = pinv(Ux_theta)* Uy_theta;
+
+
+stacked_M = [M_phi M_theta];
 
  % Peform EVD to get theta and phi
  [~, Diag] = joint_diag(stacked_M, 1.0e-8);
@@ -36,7 +50,7 @@ function [estimated_joint_thetas, estimated_joint_freq] = joint(K, d, m)
 
  % Estimate the frequency 
  angles_f = angle(diag(eigvals_Phi));
- estimated_joint_freq = angles_f/(2 * pi/P); %T=1
+ estimated_joint_freq = angles_f/(2 * pi); %T=1
 
  % Estimate the DOA
  Delta = 0.5;
