@@ -105,9 +105,6 @@ Noise = sqrt(noise_power_spectral_density / 2) * (randn(size(K)) + 1i * randn(si
 K = K + Noise;
 
 
-
-
-
 % Perform joint diagonalization
 
 [estimated_thetas_joint, estimated_freq_joint ] = joint(K,d,m); 
@@ -232,15 +229,14 @@ theta = [-20; 30]; % true directions of arrival in degrees
 f = [0.1; 0.12]; %normalized frequencies of the sources
 SNR = 100; % for SNR greater than 40, no noise is added
 N = 20; % number of snapshots
-m = 3; % smoothing factor in time
-Ns = N - m + 1; % number of samples of each source for freq estimation (smoothing in time by factor M)
+
 
 [X_gen, A_gen, S_gen] = gendata(M, N, Delta, theta, f, SNR);
 
 % Apply ESPRIT
-theta_estimated = esprit(X_gen, d);
+theta_estimated = sort(esprit(X_gen, d));
 % Apply Espritfreq
-freq_estimated = espritfreq(X_gen, d);
+freq_estimated = sort(espritfreq(X_gen, d));
 
 % Construct steering matrix using estimated DoAs
 A_est_theta = zeros(M, d);
@@ -267,6 +263,51 @@ fprintf('Rank of S matrix:       %s\n', mat2str(rank(S_mtrx_theta)));
 
 S_mtrx_freq = [S_gen; S_freq_rec];
 fprintf('Rank of S matrix:       %s\n', mat2str(rank(S_mtrx_freq)));
+
+%% Testing purposes
+% Plot of recovered first source using DoA
+figure;
+plot(real(S_gen(1, :)), 'b-', 'DisplayName', 'Re\{S\_gen(1,:)\}');
+hold on;
+plot(real(S_theta_rec(1, :)), 'r--', 'DisplayName', 'Re\{S\_theta\_rec(1,:)\}');
+hold off;
+legend;
+xlabel('Index');
+ylabel('Real Value');
+title('Real Part of First Recovered Source using DoA');
+
+% Plot of recovered second source using DoA
+figure;
+plot(real(S_gen(2, :)), 'b-', 'DisplayName', 'Re\{S\_gen(1,:)\}');
+hold on;
+plot(real(S_theta_rec(2, :)), 'r--', 'DisplayName', 'Re\{S\_theta\_rec(1,:)\}');
+hold off;
+legend;
+xlabel('Index');
+ylabel('Real Value');
+title('Real Part of Second Recovered Source using DoA');
+
+% Plot of recovered first source using freq.
+figure;
+plot(real(S_gen(1, :)), 'b-', 'DisplayName', 'Re\{S\_gen(1,:)\}');
+hold on;
+plot(real(S_freq_rec(1, :)), 'r--', 'DisplayName', 'Re\{S\_theta\_rec(1,:)\}');
+hold off;
+legend;
+xlabel('Index');
+ylabel('Real Value');
+title('Real Part of First Recovered Source using Freq.');
+
+% Plot of recovered first source using freq.
+figure;
+plot(real(S_gen(2, :)), 'b-', 'DisplayName', 'Re\{S\_gen(1,:)\}');
+hold on;
+plot(real(S_freq_rec(2, :)), 'r--', 'DisplayName', 'Re\{S\_theta\_rec(1,:)\}');
+hold off;
+legend;
+xlabel('Index');
+ylabel('Real Value');
+title('Real Part of Second Recovered Source using Freq.');
 
 %%  Comparison - 3. Plotting the spatial response
 
@@ -371,7 +412,7 @@ diag(e)
 
 %% Channel equalization - 1&2. Zero-forcing and Wiener Equalizer
 N_s = 500;          % number of QPSK symbols
-P = 8;           % oversampling factor
+P = 4;           % oversampling factor
 sigma = 0.5;      % noise std deviation
 
 % Generate QPSK symbols 
@@ -381,7 +422,6 @@ s = constellation(randi(4, 1, N_s));  % random QPSK symbols
 % Generate received signal
 x = gendata_conv(s, P, N_s, sigma);
 
-L = 2; %for just span of two symbols (L) (arbitrarily chosen)
 X = zeros(2*P,N_s-1);
 
 for k = 1:(N_s-1)
@@ -402,28 +442,29 @@ elseif P == 8
     h_sample = [1, 1, 1, -1, -1, 1, 1, -1]; %for P=8
 end
 
-L = 2; %for just span of two symbols (L) (arbitrarily chosen)
+L = 2; %for just span of two symbols (L) 
 
 
 % Construct H for just span of two symbols (L)
 % H = [[h_0 0], [0 h_1]], h_0, 0, h1 are size of 4x1
 
-% does not matter since symmetric
-% H = zeros(2*P, L);
-% H(1:length(h_sample), 1) = h_sample;
-% H(P+1:end, 2) = h_sample;
 
 H = zeros(2*P, L);
-H(1:length(h_sample), 2) = h_sample;
-H(P+1:end, 1) = h_sample;
+H(1:length(h_sample), 1) = h_sample;
+H(P+1:end, 2) = h_sample;
+
+% does not matter since symmetric
+% H = zeros(2*P, L);
+% H(1:length(h_sample), 2) = h_sample;
+% H(P+1:end, 1) = h_sample;
 
 % We are trying to build shifted versions of s -> the way we did with H in
 % class
 W_ZF_H = pinv(H);
-S_ZF = W_ZF_H * X; % it should have the size (L-1)*(N-1)
-s_ZF = S_ZF(1,1:end-1);
+S_ZF = W_ZF_H * X; % it should have the size (L)*(N-1)
+s_ZF = S_ZF(1,1:end);
 
-check_reconstruction_ZF = [s_ZF; s(1:end-L)]; % s is delayed by L 
+check_reconstruction_ZF = [s_ZF; s(1:end-1)]; % s is delayed by L-1
 
 rank_ZF = rank(check_reconstruction_ZF)
 
@@ -435,9 +476,9 @@ diag(sv)
 W_Wiener_H = (inv(H*H' + sigma^2*eye(2*P))*H)';
 
 S_Wiener = W_Wiener_H * X; 
-s_Wiener = S_Wiener(end,L:end); % or s_Wiener = S_Wiener(1,1:end-1); (same thing)
+s_Wiener = S_Wiener(1,1:end);
 
-check_reconstruction_Wiener = [s_Wiener; s(1:end-L)];
+check_reconstruction_Wiener = [s_Wiener; s(1:end-1)];
 rank_Wiener = rank(check_reconstruction_Wiener)
 
 [~,sv] = svd(check_reconstruction_Wiener);
@@ -452,7 +493,7 @@ figure;
 hold on; grid on; axis equal;
 
 % Plot the original QPSK constellation
-plot(real(s), imag(s), 'bo', 'DisplayName', 'Original');
+plot(real(s), imag(s), 'ro', 'MarkerFaceColor', 'r', 'DisplayName', 'Original');
 
 % Plot the Zero Forcing equalized constellation
 plot(real(s_ZF), imag(s_ZF), 'bx', 'DisplayName', 'ZF Equalized');
@@ -476,7 +517,7 @@ figure;
 hold on; grid on; axis equal;
 
 % Plot the original QPSK constellation
-plot(real(s), imag(s), 'bo', 'DisplayName', 'Original');
+plot(real(s), imag(s), 'ro', 'MarkerFaceColor', 'r', 'DisplayName', 'Original');
 
 % Plot the Zero Forcing equalized constellation
 plot(real(s_Wiener), imag(s_Wiener), 'bx', 'DisplayName', 'ZF Equalized');
