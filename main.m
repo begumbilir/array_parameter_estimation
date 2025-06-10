@@ -70,6 +70,18 @@ Ns = N-m+1; % number of samples used after smoothing
 % Array response and signal generation 
 [~, A_gen, S_gen] = gendata(M, Ns, Delta, theta, f, SNR_dB);
 
+% Add noise
+SNR_lin = 10^(SNR_dB/10); % linear scale
+
+% Calculate signal power
+source_power = norm(S_gen(1,:)); % norm(S_gen(1,:)) = norm(S_gen(2,:)), both sources have save signal power
+noise_power_spectral_density = source_power / SNR_lin;  % SNR defined per source
+
+% Each noise sample is complex -> add normalization factor to preserve the scaling 
+Noise = sqrt(noise_power_spectral_density / 2) * (randn(size(S_gen)) + 1i * randn(size(S_gen)));
+
+S_gen = S_gen + Noise;
+
 % Define the vector phi and matrix Phi
 phi = exp(1j * 2 * pi * f);  
 Phi = diag(phi);             % Construct diagonal matrix
@@ -82,28 +94,14 @@ Phi = diag(phi);             % Construct diagonal matrix
 
 % Received signal at the array by constructing the Khatri Rao structure
 % Apply blocks kronecker product
-K_kron = zeros(M*m, d);        
+K_kron = zeros(M*m, d);   % B in report     
 for k = 0:(m-1)
     row_start = k*M + 1;
     row_end = (k+1)*M;
     K_kron(row_start:row_end, :) = A_gen * (Phi^k);
 end
 
-K = K_kron * S_gen; %S_gen size d x (N-m+1)
-
-
-% Add noise
-SNR_lin = 10^(SNR_dB/10); % linear scale
-
-% Calculate signal power
-source_power = norm(S_gen(1,:)); % norm(S_gen(1,:)) = norm(S_gen(2,:)), both sources have save signal power
-noise_power_spectral_density = source_power / SNR_lin;  % SNR defined per source
-
-% Each noise sample is complex -> add normalization factor to preserve the scaling 
-Noise = sqrt(noise_power_spectral_density / 2) * (randn(size(K)) + 1i * randn(size(K)));
-
-K = K + Noise;
-
+K = K_kron * S_gen; %S_gen size d x (N-m+1) % time smoothed X 
 
 % Perform joint diagonalization
 
@@ -312,7 +310,7 @@ title('Real Part of Second Recovered Source using Freq.');
 %%  Comparison - 3. Plotting the spatial response
 
 % Change SNR to 10 db (Other parameters are same)
-SNR = 10; 
+SNR = 10; % does not impact the spatial response of the beamformer
 
 [X, A, S] = gendata(M, N, Delta, theta, f, SNR);
 
