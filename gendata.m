@@ -39,7 +39,7 @@ X = A * S;
 SNR_lin = 10^(SNR_dB/10); % linear scale
 
 % Signal power = num_sources 
-noise_power_spectral_density = num_sources / SNR_lin;  % SNR defined per source
+noise_power_spectral_density = sqrt(N) / SNR_lin;  % SNR defined per source
 
 % Each noise sample is complex -> add normalization factor to preserve the scaling 
 Noise = sqrt(noise_power_spectral_density / 2) * (randn(M, N) + 1i * randn(M, N));
