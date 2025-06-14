@@ -227,7 +227,7 @@ theta = [-20; 30]; % true directions of arrival in degrees
 f = [0.1; 0.12]; %normalized frequencies of the sources
 SNR = 100; % for SNR greater than 40, no noise is added
 N = 20; % number of snapshots
-
+d = 2; % number of sources
 
 [X_gen, A_gen, S_gen] = gendata(M, N, Delta, theta, f, SNR);
 
@@ -242,70 +242,27 @@ for i = 1:d
     A_est_theta(:, i) = exp(1j * 2 * pi * Delta * (0:M-1)' * sind(theta_estimated(i)));
 end
 
+% Apply ZF beamformer to recover S using DoA estimations
 W_H_theta = pinv(A_est_theta);
 S_theta_rec = W_H_theta * X_gen;
 
+% Reconstruct S up to an order of ambiguity
+norm(S_gen - S_theta_rec)
 
-% Construct steering matrix using estimated freqs
-A_est_freq = zeros(M, d);
+% To get A using freqs, construct S matrix using estimated freqs
+S_est_freq = zeros(d, N);
 for i = 1:d
-    A_est_freq(:, i) = exp(1j * 2 * pi * freq_estimated(i) * (0:M-1)');
+    S_est_freq(i, :) = exp(1j * 2 * pi * freq_estimated(i) * (0:N-1));
 end
 
+% Obtain A_theta estimated using the freq
+A_est_freq = X_gen* pinv(S_est_freq); 
+% Apply ZF beamformer to recover S using freq. estimations
 W_H_freq = pinv(A_est_freq);
-S_freq_rec = W_H_freq * X_gen;
+S_freq_rec = W_H_freq * X_gen; 
 
-% Display rank
-S_mtrx_theta = [S_gen; S_theta_rec];
-fprintf('Rank of S matrix:       %s\n', mat2str(rank(S_mtrx_theta)));
-
-S_mtrx_freq = [S_gen; S_freq_rec];
-fprintf('Rank of S matrix:       %s\n', mat2str(rank(S_mtrx_freq)));
-
-%% Testing purposes
-% Plot of recovered first source using DoA
-figure;
-plot(real(S_gen(1, :)), 'b-', 'DisplayName', 'Re\{S\_gen(1,:)\}');
-hold on;
-plot(real(S_theta_rec(1, :)), 'r--', 'DisplayName', 'Re\{S\_theta\_rec(1,:)\}');
-hold off;
-legend;
-xlabel('Index');
-ylabel('Real Value');
-title('Real Part of First Recovered Source using DoA');
-
-% Plot of recovered second source using DoA
-figure;
-plot(real(S_gen(2, :)), 'b-', 'DisplayName', 'Re\{S\_gen(1,:)\}');
-hold on;
-plot(real(S_theta_rec(2, :)), 'r--', 'DisplayName', 'Re\{S\_theta\_rec(1,:)\}');
-hold off;
-legend;
-xlabel('Index');
-ylabel('Real Value');
-title('Real Part of Second Recovered Source using DoA');
-
-% Plot of recovered first source using freq.
-figure;
-plot(real(S_gen(1, :)), 'b-', 'DisplayName', 'Re\{S\_gen(1,:)\}');
-hold on;
-plot(real(S_freq_rec(1, :)), 'r--', 'DisplayName', 'Re\{S\_theta\_rec(1,:)\}');
-hold off;
-legend;
-xlabel('Index');
-ylabel('Real Value');
-title('Real Part of First Recovered Source using Freq.');
-
-% Plot of recovered first source using freq.
-figure;
-plot(real(S_gen(2, :)), 'b-', 'DisplayName', 'Re\{S\_gen(1,:)\}');
-hold on;
-plot(real(S_freq_rec(2, :)), 'r--', 'DisplayName', 'Re\{S\_theta\_rec(1,:)\}');
-hold off;
-legend;
-xlabel('Index');
-ylabel('Real Value');
-title('Real Part of Second Recovered Source using Freq.');
+% Reconstruct S up to an order of ambiguity
+norm(S_gen - S_freq_rec)
 
 %%  Comparison - 3. Plotting the spatial response
 
@@ -319,7 +276,13 @@ theta_estimated = sort(esprit(X, d));
 
 % Apply Espritfreq
 freq_estimated = sort(espritfreq(X, d));
-
+% To get A using freqs, construct S matrix using estimated freqs
+S_est_freq = zeros(d, N);
+for i = 1:d
+    S_est_freq(i, :) = exp(1j * 2 * pi * freq_estimated(i) * (0:N-1));
+end
+% Get A_theta estimated using the freq
+A_est_freq = X_gen* pinv(S_est_freq); 
 
 theta_scan = -90:1:90; % Scanning angles for beam pattern
 
@@ -331,8 +294,8 @@ w_H_theta = a_theta1' / norm(a_theta1); %ZF beamformer for source 1
 w_H_theta2 = a_theta2' / norm(a_theta2); %ZF beamformer for source 2
 
 % Construct steering vectors using estimated freqs
-a_freq1 = exp(1j * 2 * pi * freq_estimated(1) * (0:M-1)');
-a_freq2 = exp(1j * 2 * pi * freq_estimated(2) * (0:M-1)');
+a_freq1 = A_est_freq(:,1);
+a_freq2 = A_est_freq(:,2);
 % Compute ZF beamformer -> norm: Euclidean norm
 w_H_freq = a_freq1' / norm(a_freq1); %ZF beamformer for source 1
 w_H_freq2 = a_freq2' / norm(a_freq2); %ZF beamformer for source 2
