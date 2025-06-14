@@ -74,7 +74,7 @@ Ns = N-m+1; % number of samples used after smoothing
 SNR_lin = 10^(SNR_dB/10); % linear scale
 
 % Calculate signal power
-source_power = norm(S_gen(1,:)); % norm(S_gen(1,:)) = norm(S_gen(2,:)), both sources have save signal power
+source_power = norm(S_gen(1,:))/size(S_gen, 2); % norm(S_gen(1,:)) = norm(S_gen(2,:)), both sources have save signal power
 noise_power_spectral_density = source_power / SNR_lin;  % SNR defined per source
 
 % Each noise sample is complex -> add normalization factor to preserve the scaling 
@@ -150,7 +150,7 @@ for idx = 1:length(SNR_db)
         
         % Add noise
         SNR_lin = 10^(SNR_dB/10); % linear scale
-        source_power = norm(S_gen(1,:));
+        source_power = norm(S_gen(1,:))/size(S_gen, 2);
         noise_power_spectral_density = source_power / SNR_lin;  % SNR defined per source
         Noise = sqrt(noise_power_spectral_density / 2) * (randn(size(K)) + 1i * randn(size(K)));
         K = K + Noise;
